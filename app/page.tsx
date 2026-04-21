@@ -1,14 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+
+interface Articulo {
+  id: number;
+  titulo: string;
+  autor: string;
+  categoria: string;
+  contenido: string;
+  resumen: string;
+  imagen: string;
+  categoriasOrientadas: string[];
+  fecha: string;
+}
 
 export default function Home() {
+  const router = useRouter();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [articulos, setArticulos] = useState<Articulo[]>([]);
   const [messages, setMessages] = useState([
     { id: 1, text: '¡Hola! ¿En qué puedo ayudarte?', sender: 'bot' }
   ]);
   const [inputValue, setInputValue] = useState('');
+
+  useEffect(() => {
+    const articulosGuardados = JSON.parse(localStorage.getItem('articulos') || '[]');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setArticulos(articulosGuardados);
+  }, []);
 
   const slides = [
     { id: 1, title: 'Formar', subtitle: 'Excelencia', color: 'bg-purple-900' },
@@ -59,10 +81,12 @@ export default function Home() {
             </div>
             <span className="text-xl font-bold text-gray-900">Pascual Bravo</span>
           </div>
-          <div className="flex gap-6 text-sm text-gray-600">
+          <div className="flex gap-6 text-sm text-gray-600 items-center">
             <a href="#" className="hover:text-purple-600">Académico</a>
             <a href="#" className="hover:text-purple-600">Bienestar</a>
-            <a href="#" className="hover:text-purple-600">Investigación</a>
+            <button onClick={() => router.push('/articulos/new')} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+              Publicar Artículo
+            </button>
           </div>
         </div>
       </nav>
@@ -129,7 +153,7 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           {['Formar', 'Servir', 'Cuidar'].map((item) => (
             <div key={item} className="bg-linear-to-br from-purple-50 to-indigo-50 p-8 rounded-lg border border-purple-200 hover:shadow-lg transition-shadow">
               <h3 className="text-2xl font-bold text-purple-900 mb-3">{item}</h3>
@@ -139,6 +163,49 @@ export default function Home() {
             </div>
           ))}
         </div>
+
+        {/* Sección de Artículos Publicados */}
+        {articulos.length > 0 && (
+          <div className="mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-8">Artículos Publicados</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {articulos.map((articulo) => (
+                <div key={articulo.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                  {articulo.imagen && (
+                    <img src={articulo.imagen} alt={articulo.titulo} className="w-full h-48 object-cover" loading="lazy" />
+                  )}
+                  <div className="p-4">
+                    <div className="flex gap-2 mb-2 flex-wrap">
+                      {articulo.categoriasOrientadas.map((cat) => (
+                        <span key={cat} className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                          {cat.replace('-', ' ')}
+                        </span>
+                      ))}
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2">{articulo.titulo}</h3>
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{articulo.resumen}</p>
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <span>{articulo.autor}</span>
+                      <span>{articulo.fecha}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {articulos.length === 0 && (
+          <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+            <p className="text-gray-600 mb-4">Aún no hay artículos publicados</p>
+            <button
+              onClick={() => router.push('/articulos/new')}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+            >
+              Ser el primero en publicar
+            </button>
+          </div>
+        )}
       </main>
 
       {/* Botón flotante de Chat */}
@@ -195,7 +262,7 @@ export default function Home() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Escribe tu mensaje..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-600"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-purple-600"
             />
             <button
               onClick={handleSendMessage}
