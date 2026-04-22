@@ -1,179 +1,171 @@
 /**
- * Servicio de Chatbot MCP
+ * Servicio de Chatbot RAG
  * 
- * Maneja toda la comunicación con el backend del MCP chatbot
- * Se encarga de enviar mensajes, obtener respuestas y gestionar la conversación
+ * Maneja toda la comunicación con el backend RAG de Pascual Bravo.
+ * Endpoints:
+ *   POST /sessions  → Crea nueva sesión conversacional
+ *   POST /chat      → Envía pregunta y obtiene respuesta RAG con citas
+ *   GET  /health    → Verifica estado del backend (DB + LLMs)
  */
 
-import { ChatMessage, ChatResponse, ApiResponse } from '../types';
+import { ChatResponse, ChatApiResponse } from '../types';
 import { CHATBOT_ENDPOINTS, API_CONFIG } from './config';
 
 /**
- * Clase para manejar la comunicación con el MCP Chatbot
- * Proporciona métodos para enviar mensajes y obtener respuestas
+ * Clase para manejar la comunicación con el backend RAG
  */
 class ChatbotService {
   /**
-   * Envía un mensaje al chatbot MCP
+   * Crea una nueva sesión conversacional en el backend
    * 
-   * @param message - El mensaje del usuario
-   * @param sessionId - ID de sesión (opcional, para mantener contexto)
-   * @returns Respuesta del chatbot
+   * @returns session_id generado por el backend
    * 
    * @example
    * ```ts
-   * const response = await chatbotService.sendMessage('¿Cuáles son los programas disponibles?');
-   * console.log(response.message);
+   * const sessionId = await chatbotService.createSession();
+   * // sessionId = "550e8400-e29b-41d4-a716-446655440000"
+   * ```
+   */
+  async createSession(): Promise<string> {
+    const response = await this.fetchWithRetry(
+      CHATBOT_ENDPOINTS.SESSIONS,
+      {
+        method: 'POST',
+        headers: API_CONFIG.DEFAULT_HEADERS,
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Error creando sesión: HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.session_id;
+  }
+
+  /**
+   * Envía una pregunta al RAG y obtiene respuesta con citas
+   * 
+   * @param question - La pregunta del usuario
+   * @param sessionId - ID de sesión (obtenido de createSession)
+   * @returns Respuesta del chatbot con citas y confianza
+   * 
+   * @example
+   * ```ts
+   * const response = await chatbotService.sendMessage(
+   *   '¿Cuáles son los programas disponibles?',
+   *   'session-uuid'
+   * );
+   * console.log(response.message);       // "Los programas son... [1] [2]"
+   * console.log(response.citations);      // [{ id: 1, url: "...", ... }]
+   * console.log(response.confident);      // true
    * ```
    */
   async sendMessage(
-    message: string,
-    sessionId?: string
+    question: string,
+    sessionId: string
   ): Promise<ChatResponse> {
     try {
       const payload = {
-        message,
-        sessionId: sessionId || this.generateSessionId(),
-        timestamp: new Date().toISOString(),
+        session_id: sessionId,
+        question,
       };
 
       const response = await this.fetchWithRetry(
-        CHATBOT_ENDPOINTS.SEND_MESSAGE,
+        CHATBOT_ENDPOINTS.CHAT,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: API_CONFIG.DEFAULT_HEADERS,
           body: JSON.stringify(payload),
         }
       );
 
-      const data = await response.json() as ApiResponse<{ message: string }>;
-
       if (!response.ok) {
-        throw new Error(data.error || 'Error al enviar mensaje al chatbot');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(
+          (errData as any).detail || `Error del servidor: HTTP ${response.status}`
+        );
       }
 
+      const data: ChatApiResponse = await response.json();
+
       return {
-        message: data.data?.message || 'No se pudo obtener respuesta',
-        success: data.success,
-        data: data.data,
+        message: data.answer,
+        success: true,
+        citations: data.citations,
+        confident: data.confident,
       };
     } catch (error) {
       console.error('Error en sendMessage:', error);
+      const errorMsg = error instanceof Error
+        ? error.message
+        : 'Lo siento, hubo un error al procesar tu pregunta.';
       return {
-        message: 'Lo siento, hubo un error al procesar tu pregunta.',
+        message: errorMsg,
         success: false,
       };
     }
   }
 
   /**
-   * Obtiene el historial de la conversación
+   * Verifica el estado del backend RAG (DB + LLM providers)
    * 
-   * @param sessionId - ID de sesión
-   * @returns Array de mensajes del historial
+   * @returns true si el backend está operativo
+   * 
+   * @example
+   * ```ts
+   * const isHealthy = await chatbotService.checkHealth();
+   * if (!isHealthy) console.warn('Backend no disponible');
+   * ```
    */
-  async getHistory(sessionId: string): Promise<ChatMessage[]> {
+  async checkHealth(): Promise<{
+    ok: boolean;
+    status?: string;
+    database?: boolean;
+    providers?: string[];
+  }> {
     try {
-      const response = await this.fetchWithRetry(
-        `${CHATBOT_ENDPOINTS.GET_HISTORY}?sessionId=${sessionId}`,
-        {
-          method: 'GET',
-        }
-      );
-
-      const data = await response.json() as ApiResponse<ChatMessage[]>;
+      const response = await fetch(CHATBOT_ENDPOINTS.HEALTH, {
+        method: 'GET',
+      });
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al obtener historial');
+        return { ok: false };
       }
 
-      return data.data || [];
-    } catch (error) {
-      console.error('Error en getHistory:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Limpia la conversación del chatbot
-   * 
-   * @param sessionId - ID de sesión
-   */
-  async clearChat(sessionId: string): Promise<boolean> {
-    try {
-      const response = await this.fetchWithRetry(
-        CHATBOT_ENDPOINTS.CLEAR_CHAT,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ sessionId }),
-        }
-      );
-
-      return response.ok;
-    } catch (error) {
-      console.error('Error en clearChat:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Realiza una búsqueda en la base de datos usando el chatbot
-   * Útil para consultas más complejas
-   * 
-   * @param query - Consulta de búsqueda
-   * @param filters - Filtros adicionales (opcional)
-   */
-  async search(
-    query: string,
-    filters?: Record<string, any>
-  ): Promise<any[]> {
-    try {
-      const payload = {
-        query,
-        filters,
-        timestamp: new Date().toISOString(),
+      const data = await response.json();
+      return {
+        ok: data.status === 'ok',
+        status: data.status,
+        database: data.database,
+        providers: data.providers,
       };
-
-      const response = await this.fetchWithRetry(
-        `${CHATBOT_ENDPOINTS.SEND_MESSAGE}/search`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      const data = await response.json() as ApiResponse<any[]>;
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Error en búsqueda');
-      }
-
-      return data.data || [];
-    } catch (error) {
-      console.error('Error en search:', error);
-      return [];
+    } catch {
+      return { ok: false };
     }
   }
 
   /**
-   * Genera un ID de sesión único
-   * Útil para mantener contexto entre conversaciones
+   * Limpia la conversación (crea una nueva sesión)
+   * Como el backend no tiene endpoint de clear, simplemente
+   * retornamos un nuevo session_id
    */
-  private generateSessionId(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  async clearChat(_sessionId: string): Promise<boolean> {
+    // El backend RAG no expone endpoint de clear,
+    // la estrategia es crear una nueva sesión
+    return true;
   }
 
   /**
-   * Realiza fetch con reintentos automáticos
-   * Mejora la confiabilidad de la comunicación con el backend
+   * Stub para mantener compatibilidad con el hook
+   * El backend RAG no expone endpoint de historial
+   */
+  async getHistory(_sessionId: string): Promise<never[]> {
+    return [];
+  }
+
+  /**
+   * Realiza fetch con reintentos automáticos y timeout
    */
   private async fetchWithRetry(
     url: string,

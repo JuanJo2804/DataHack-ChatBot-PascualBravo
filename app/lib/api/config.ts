@@ -1,24 +1,20 @@
 /**
  * Configuración de API - Punto central para endpoints y configuración
  * 
- * Modifica estas variables para conectar con tu backend
+ * Conecta con el backend RAG en FastAPI (puerto 8000)
  */
 
-// ===== URLs DE ENDPOINTS =====
-// En producción, usa variables de entorno (process.env.NEXT_PUBLIC_API_URL)
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const MCP_CHATBOT_URL = process.env.NEXT_PUBLIC_MCP_CHATBOT_URL || 'http://localhost:3002';
+// ===== URL BASE DEL BACKEND RAG =====
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// ===== ENDPOINTS DE CHATBOT =====
+// ===== ENDPOINTS DEL CHATBOT RAG =====
 export const CHATBOT_ENDPOINTS = {
-  // Endpoint principal para enviar mensajes al chatbot MCP
-  SEND_MESSAGE: `${MCP_CHATBOT_URL}/api/chat/message`,
-  // Endpoint para obtener respuestas en tiempo real
-  GET_RESPONSE: `${MCP_CHATBOT_URL}/api/chat/response`,
-  // Endpoint para obtener historial
-  GET_HISTORY: `${MCP_CHATBOT_URL}/api/chat/history`,
-  // Endpoint para limpiar conversación
-  CLEAR_CHAT: `${MCP_CHATBOT_URL}/api/chat/clear`,
+  // Endpoint para enviar preguntas al RAG
+  CHAT: `${API_BASE_URL}/chat`,
+  // Endpoint para crear una nueva sesión conversacional
+  SESSIONS: `${API_BASE_URL}/sessions`,
+  // Endpoint para verificar estado del backend (DB + LLMs)
+  HEALTH: `${API_BASE_URL}/health`,
 } as const;
 
 // ===== ENDPOINTS DE ARTÍCULOS =====
@@ -41,10 +37,10 @@ export const ARTICULOS_ENDPOINTS = {
 
 // ===== CONFIGURACIÓN DE PETICIONES =====
 export const API_CONFIG = {
-  // Timeout para peticiones (en ms)
-  TIMEOUT: 10000,
+  // Timeout para peticiones (en ms) - mayor para el RAG que puede tardar
+  TIMEOUT: 30000,
   // Reintentos automáticos para peticiones fallidas
-  RETRIES: 3,
+  RETRIES: 2,
   // Delay entre reintentos (en ms)
   RETRY_DELAY: 1000,
   // Headers por defecto
@@ -57,22 +53,12 @@ export const API_CONFIG = {
 
 /**
  * Obtiene la URL base de la API
- * Útil para cambiar dinámicamente según el ambiente
  */
 export const getApiBaseUrl = (): string => {
   if (typeof window === 'undefined') {
-    // En servidor, usa variable de entorno
     return process.env.API_URL || API_BASE_URL;
   }
-  // En cliente, usa la variable de entorno pública
   return process.env.NEXT_PUBLIC_API_URL || API_BASE_URL;
-};
-
-/**
- * Obtiene la URL del MCP chatbot
- */
-export const getMcpChatbotUrl = (): string => {
-  return process.env.NEXT_PUBLIC_MCP_CHATBOT_URL || MCP_CHATBOT_URL;
 };
 
 /**

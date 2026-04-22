@@ -9,8 +9,7 @@ export {
   ARTICULOS_ENDPOINTS, 
   API_CONFIG,
   getApiBaseUrl,
-  getMcpChatbotUrl,
   isValidUrl,
 } from './config';
 
-export type { ChatMessage, ChatResponse, Articulo, ApiResponse } from '../types';
+export type { ChatMessage, ChatResponse, ChatApiResponse, Citation, Articulo, ApiResponse } from '../types';

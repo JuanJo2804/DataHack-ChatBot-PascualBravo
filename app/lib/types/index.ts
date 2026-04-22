@@ -8,11 +8,35 @@ export interface ChatMessage {
   text: string;
   sender: 'user' | 'bot';
   timestamp?: Date;
+  citations?: Citation[];
+  confident?: boolean;
 }
 
+export interface Citation {
+  id: number;
+  url: string;
+  title: string;
+  snippet: string;
+}
+
+/**
+ * Respuesta del endpoint POST /chat del backend RAG
+ */
+export interface ChatApiResponse {
+  session_id: string;
+  answer: string;
+  citations: Citation[];
+  confident: boolean;
+}
+
+/**
+ * Respuesta interna del servicio (para compatibilidad con el hook existente)
+ */
 export interface ChatResponse {
   message: string;
   success: boolean;
+  citations?: Citation[];
+  confident?: boolean;
   data?: any;
 }
 
