@@ -296,7 +296,7 @@ class ArticulosService {
   private async fetchWithRetry(
     url: string,
     options: RequestInit,
-    retries = API_CONFIG.RETRIES
+    retries: number = API_CONFIG.RETRIES
   ): Promise<Response> {
     try {
       const controller = new AbortController();
