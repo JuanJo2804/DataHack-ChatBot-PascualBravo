@@ -8,13 +8,22 @@
  *   GET  /health    → Verifica estado del backend (DB + LLMs)
  */
 
-import { ChatResponse, ChatApiResponse } from '../types';
+import { ChatResponse, ChatApiResponse, FeedbackRating } from '../types';
 import { CHATBOT_ENDPOINTS, API_CONFIG } from './config';
 
 /**
  * Clase para manejar la comunicación con el backend RAG
  */
 class ChatbotService {
+  private getErrorDetail(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') {
+      return null;
+    }
+
+    const detail = (payload as { detail?: unknown }).detail;
+    return typeof detail === 'string' ? detail : null;
+  }
+
   /**
    * Crea una nueva sesión conversacional en el backend
    * 
@@ -94,6 +103,7 @@ class ChatbotService {
         success: true,
         citations: data.citations,
         confident: data.confident,
+        turnId: data.turn_id,
       };
     } catch (error) {
       console.error('Error en sendMessage:', error);
@@ -162,6 +172,66 @@ class ChatbotService {
    */
   async getHistory(_sessionId: string): Promise<never[]> {
     return [];
+  }
+
+  /**
+   * Envía feedback de un turno del asistente
+   */
+  async submitFeedback(
+    sessionId: string,
+    turnId: number,
+    rating: FeedbackRating,
+    reason?: string
+  ): Promise<{
+    success: boolean;
+    feedbackId?: number;
+    message?: string;
+    statusCode?: number;
+  }> {
+    try {
+      const payload = {
+        session_id: sessionId,
+        turn_id: turnId,
+        rating,
+        ...(reason ? { reason } : {}),
+      };
+
+      const response = await this.fetchWithRetry(
+        CHATBOT_ENDPOINTS.FEEDBACK,
+        {
+          method: 'POST',
+          headers: API_CONFIG.DEFAULT_HEADERS,
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        const detail = this.getErrorDetail(errData);
+
+        return {
+          success: false,
+          statusCode: response.status,
+          message: detail || `No fue posible enviar feedback (HTTP ${response.status})`,
+        };
+      }
+
+      const data = (await response.json()) as { feedback_id?: number };
+
+      return {
+        success: true,
+        feedbackId: data.feedback_id,
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error
+        ? error.message
+        : 'Error desconocido enviando feedback';
+
+      return {
+        success: false,
+        message: errorMsg,
+      };
+    }
   }
 
   /**

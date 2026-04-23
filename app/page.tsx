@@ -1,10 +1,27 @@
 'use client';
 
-import { FormEvent, useEffect, useRef } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useChat } from '@/app/hooks/useChat';
+import { FeedbackRating } from '@/app/lib/types';
+
+const feedbackReasonByRating: Record<Exclude<FeedbackRating, 'helpful'>, string> = {
+  not_helpful: 'Esto no respondió mi pregunta',
+  wrong: 'Esta información es incorrecta',
+  incomplete: 'Me faltó información',
+  missing_info: 'El bot dijo que no tenía información, pero debería',
+};
+
+const feedbackLabelByRating: Record<FeedbackRating, string> = {
+  helpful: 'Útil',
+  not_helpful: 'No respondió',
+  wrong: 'Incorrecta',
+  incomplete: 'Incompleta',
+  missing_info: 'Falta info',
+};
 
 export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [feedbackCommentByMessageId, setFeedbackCommentByMessageId] = useState<Record<number, string>>({});
 
   const {
     messages,
@@ -14,6 +31,10 @@ export default function Home() {
     isLoading,
     isSessionReady,
     error,
+    feedbackByTurnId,
+    feedbackLoadingTurnId,
+    feedbackErrorByTurnId,
+    submitFeedback,
   } = useChat({ autoCreateSession: true });
 
   useEffect(() => {
@@ -28,6 +49,15 @@ export default function Home() {
     }
 
     void sendMessage(inputValue);
+  };
+
+  const handleFeedback = (turnId: number, messageId: number, rating: FeedbackRating) => {
+    const comment = feedbackCommentByMessageId[messageId]?.trim();
+    const reason = comment || (rating === 'helpful'
+      ? undefined
+      : feedbackReasonByRating[rating]);
+
+    void submitFeedback(turnId, rating, reason);
   };
 
   return (
@@ -103,6 +133,87 @@ export default function Home() {
                       <p className="mt-1 px-1 text-xs text-amber-300">
                         Respuesta con baja confianza
                       </p>
+                    )}
+
+                    {msg.sender === 'bot' && msg.id > 1 && (
+                      <div className="mt-3 rounded-xl border border-white/10 bg-zinc-950/60 p-3">
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                          ¿Te sirvió esta respuesta?
+                        </p>
+
+                        <textarea
+                          value={feedbackCommentByMessageId[msg.id] || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFeedbackCommentByMessageId((prev) => ({
+                              ...prev,
+                              [msg.id]: value,
+                            }));
+                          }}
+                          maxLength={300}
+                          placeholder="Comentario (opcional)"
+                          disabled={typeof msg.turnId !== 'number' || (typeof msg.turnId === 'number' && Boolean(feedbackByTurnId[msg.turnId]))}
+                          className="mb-3 min-h-20 w-full rounded-lg border border-white/15 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-300/40 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+
+                        <div className="flex flex-wrap gap-2">
+                          {(Object.keys(feedbackLabelByRating) as FeedbackRating[]).map((rating) => {
+                            const turnId = msg.turnId;
+                            const canSendFeedback = typeof turnId === 'number';
+                            const alreadyRated = canSendFeedback
+                              ? Boolean(feedbackByTurnId[turnId])
+                              : false;
+                            const isSelected = canSendFeedback
+                              ? feedbackByTurnId[turnId] === rating
+                              : false;
+                            const isSending = canSendFeedback
+                              ? feedbackLoadingTurnId === turnId
+                              : false;
+
+                            return (
+                              <button
+                                key={`${msg.id}-${rating}`}
+                                type="button"
+                                onClick={() => {
+                                  if (typeof msg.turnId === 'number') {
+                                    handleFeedback(msg.turnId, msg.id, rating);
+                                  }
+                                }}
+                                disabled={!canSendFeedback || alreadyRated || isSending}
+                                className={`rounded-full px-3 py-1 text-xs transition-colors ${
+                                  isSelected
+                                    ? 'bg-emerald-300 text-zinc-900'
+                                    : 'border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10'
+                                } disabled:cursor-not-allowed disabled:opacity-60`}
+                              >
+                                {feedbackLabelByRating[rating]}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {typeof msg.turnId === 'number' && feedbackLoadingTurnId === msg.turnId && (
+                          <p className="mt-2 text-xs text-zinc-400">Enviando feedback...</p>
+                        )}
+
+                        {typeof msg.turnId === 'number' && feedbackByTurnId[msg.turnId] && (
+                          <p className="mt-2 text-xs text-emerald-300">
+                            Gracias. Feedback registrado como: {feedbackLabelByRating[feedbackByTurnId[msg.turnId]]}
+                          </p>
+                        )}
+
+                        {typeof msg.turnId === 'number' && feedbackErrorByTurnId[msg.turnId] && (
+                          <p className="mt-2 text-xs text-red-300">
+                            {feedbackErrorByTurnId[msg.turnId]}
+                          </p>
+                        )}
+
+                        {typeof msg.turnId !== 'number' && (
+                          <p className="mt-2 text-xs text-zinc-500">
+                            Feedback no disponible para este turno porque el backend no devolvió turn_id.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

@@ -10,7 +10,15 @@ export interface ChatMessage {
   timestamp?: Date;
   citations?: Citation[];
   confident?: boolean;
+  turnId?: number;
 }
+
+export type FeedbackRating =
+  | 'helpful'
+  | 'not_helpful'
+  | 'wrong'
+  | 'incomplete'
+  | 'missing_info';
 
 export interface Citation {
   id: number;
@@ -27,6 +35,7 @@ export interface ChatApiResponse {
   answer: string;
   citations: Citation[];
   confident: boolean;
+  turn_id?: number;
 }
 
 /**
@@ -37,6 +46,7 @@ export interface ChatResponse {
   success: boolean;
   citations?: Citation[];
   confident?: boolean;
+  turnId?: number;
   data?: any;
 }
 

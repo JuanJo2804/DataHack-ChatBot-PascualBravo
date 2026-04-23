@@ -11,7 +11,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ChatMessage, Citation } from '@/app/lib/types';
+import { ChatMessage, FeedbackRating } from '@/app/lib/types';
 import { chatbotService } from '@/app/lib/api/chatbot';
 
 interface UseChatOptions {
@@ -31,6 +31,12 @@ interface UseChatReturn {
   isSessionReady: boolean;
   /** Indica si el backend está disponible */
   isBackendHealthy: boolean | null;
+  /** Rating enviado por turn_id */
+  feedbackByTurnId: Record<number, FeedbackRating>;
+  /** turn_id que está enviando feedback */
+  feedbackLoadingTurnId: number | null;
+  /** Error de feedback por turn_id */
+  feedbackErrorByTurnId: Record<number, string>;
   
   // Métodos
   setInputValue: (value: string) => void;
@@ -42,6 +48,12 @@ interface UseChatReturn {
   createSession: () => Promise<void>;
   /** Verifica la salud del backend */
   checkHealth: () => Promise<boolean>;
+  /** Envía feedback de una respuesta del asistente */
+  submitFeedback: (
+    turnId: number,
+    rating: FeedbackRating,
+    reason?: string
+  ) => Promise<void>;
 }
 
 /**
@@ -91,6 +103,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [error, setError] = useState<string | null>(null);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isBackendHealthy, setIsBackendHealthy] = useState<boolean | null>(null);
+  const [feedbackByTurnId, setFeedbackByTurnId] = useState<Record<number, FeedbackRating>>({});
+  const [feedbackLoadingTurnId, setFeedbackLoadingTurnId] = useState<number | null>(null);
+  const [feedbackErrorByTurnId, setFeedbackErrorByTurnId] = useState<Record<number, string>>({});
   
   // Referencias
   const sessionIdRef = useRef<string>('');
@@ -109,6 +124,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       const newSessionId = await chatbotService.createSession();
       sessionIdRef.current = newSessionId;
       setIsSessionReady(true);
+      setFeedbackByTurnId({});
+      setFeedbackErrorByTurnId({});
       console.log('Sesión creada:', newSessionId);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Error creando sesión';
@@ -194,6 +211,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           timestamp: new Date(),
           citations: response.citations,
           confident: response.confident,
+          turnId: response.turnId,
         };
         messageCountRef.current++;
 
@@ -253,6 +271,52 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setError(null);
   }, []);
 
+  /**
+   * Envía feedback de una respuesta del asistente
+   */
+  const submitFeedback = useCallback(
+    async (turnId: number, rating: FeedbackRating, reason?: string) => {
+      if (!sessionIdRef.current || !isSessionReady) {
+        setError('No hay sesión activa para enviar feedback.');
+        return;
+      }
+
+      if (feedbackByTurnId[turnId]) {
+        return;
+      }
+
+      setFeedbackLoadingTurnId(turnId);
+      setFeedbackErrorByTurnId((prev) => {
+        const next = { ...prev };
+        delete next[turnId];
+        return next;
+      });
+
+      const result = await chatbotService.submitFeedback(
+        sessionIdRef.current,
+        turnId,
+        rating,
+        reason
+      );
+
+      if (!result.success) {
+        setFeedbackErrorByTurnId((prev) => ({
+          ...prev,
+          [turnId]: result.message || 'No fue posible enviar feedback.',
+        }));
+        setFeedbackLoadingTurnId(null);
+        return;
+      }
+
+      setFeedbackByTurnId((prev) => ({
+        ...prev,
+        [turnId]: rating,
+      }));
+      setFeedbackLoadingTurnId(null);
+    },
+    [isSessionReady, feedbackByTurnId]
+  );
+
   return {
     messages,
     inputValue,
@@ -261,6 +325,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     sessionId: sessionIdRef.current,
     isSessionReady,
     isBackendHealthy,
+    feedbackByTurnId,
+    feedbackLoadingTurnId,
+    feedbackErrorByTurnId,
     setInputValue,
     sendMessage,
     clearChat,
@@ -268,5 +335,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     loadHistory,
     createSession,
     checkHealth,
+    submitFeedback,
   };
 }

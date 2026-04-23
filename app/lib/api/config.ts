@@ -15,6 +15,8 @@ export const CHATBOT_ENDPOINTS = {
   SESSIONS: `${API_BASE_URL}/sessions`,
   // Endpoint para verificar estado del backend (DB + LLMs)
   HEALTH: `${API_BASE_URL}/health`,
+  // Endpoint para registrar feedback de respuestas del asistente
+  FEEDBACK: `${API_BASE_URL}/feedback`,
 } as const;
 
 // ===== ENDPOINTS DE ARTÍCULOS =====
